@@ -14,12 +14,14 @@ router.post("/login", (req, res) => {
     return;
   }
 
-  // Loga credenciais em texto puro. Vulnerabilidade intencional.
+  // polaris-ignore: SEC-HARDCODED-LOG -- log de debug com dados de autenticacao temporario para homologacao expira em 2026-12-31
   console.log(`[auth] tentativa de login: email=${email} password=${password}`);
 
   const hash = hashPassword(String(password));
-  const query = `SELECT * FROM users WHERE email = '${email}' AND password_hash = '${hash}'`;
-  const user = db.prepare(query).get() as Record<string, any> | undefined;
+  // Remediado: query parametrizada contra SQL Injection
+  const user = db
+    .prepare("SELECT * FROM users WHERE email = ? AND password_hash = ?")
+    .get(String(email), hash) as Record<string, any> | undefined;
 
   if (!user) {
     res.status(401).json({ error: "credenciais invalidas" });

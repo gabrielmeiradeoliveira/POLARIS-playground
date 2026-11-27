@@ -9,14 +9,15 @@ const router = Router();
 router.use(authRequired);
 
 // GET /documents?search=...
-// SQL Injection via LIKE concatenado. Vulnerabilidade intencional.
+// Remediado: query parametrizada contra SQL Injection no LIKE
 router.get("/", (req, res) => {
   const search = String(req.query.search ?? "");
+  const pattern = `%${search}%`;
   const rows = db
     .prepare(
-      `SELECT * FROM documents WHERE title LIKE '%${search}%' OR content LIKE '%${search}%' ORDER BY id DESC`
+      "SELECT * FROM documents WHERE title LIKE ? OR content LIKE ? ORDER BY id DESC"
     )
-    .all();
+    .all(pattern, pattern);
 
   res.json(rows);
 });
@@ -35,13 +36,19 @@ router.get("/:id", (req, res) => {
 });
 
 // GET /documents/download?name=...
-// Path Traversal: concatena entrada do usuario ao diretorio. Vulnerabilidade intencional.
+// Remediado: validacao e canonicalizacao de caminho contra Path Traversal
 router.get("/download/file", (req, res) => {
   const name = String(req.query.name ?? "");
-  const filePath = path.join(DOCS_DIR, name);
+  const baseDir = path.resolve(DOCS_DIR);
+  const resolvedPath = path.resolve(baseDir, name);
+
+  if (!resolvedPath.startsWith(baseDir + path.sep)) {
+    res.status(403).json({ error: "acesso negado: caminho fora do diretorio permitido" });
+    return;
+  }
 
   try {
-    const content = fs.readFileSync(filePath);
+    const content = fs.readFileSync(resolvedPath);
     res.type("application/octet-stream").send(content);
   } catch (err) {
     res.status(500).json({ error: String(err), stack: (err as Error).stack });
